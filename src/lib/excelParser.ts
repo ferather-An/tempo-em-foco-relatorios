@@ -1,16 +1,33 @@
 
-import { ExcelTimeSheetData, EmployeeTimeData, ImportResult, ExcelDayEntry } from "./types";
+import { ExcelTimeSheetData, EmployeeTimeData, ImportResult, ExcelDayEntry, TimeEntry } from "./types";
 
 // Função para converter os dados brutos do Excel para o formato ExcelTimeSheetData
 export function parseExcelTimesheet(rawData: any, fileName: string): ImportResult {
   try {
     console.log("Dados brutos recebidos:", rawData);
     
-    // Extrair informações do funcionário das linhas 4-7
-    const employeeName = extractCellValue(rawData, 3, 1); // Célula B4
-    const employeePosition = extractCellValue(rawData, 4, 1); // Célula B5
-    const month = extractCellValue(rawData, 3, 5); // Célula F4
-    const year = extractCellValue(rawData, 4, 5); // Célula F5
+    // Nome está na célula D3 (índice 2,3)
+    let employeeName = "";
+    let employeePosition = "";
+    let month = "";
+    let year = "";
+    
+    // Procura o nome na linha 3
+    for (let i = 0; i < rawData.length; i++) {
+      const row = rawData[i];
+      if (!row) continue;
+      
+      // Procura a linha que contém "Nome:"
+      if (row[0] === "Nome:") {
+        employeeName = row[3] || "";
+        month = row[10] || "";
+      } 
+      // Procura a linha que contém "Função:"
+      else if (row[0] === "Função:") {
+        employeePosition = row[3] || "";
+        year = row[10] || "";
+      }
+    }
     
     // Validar se encontramos as informações básicas
     if (!employeeName || !month || !year) {
@@ -24,8 +41,7 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
     let headerRowIndex = -1;
     for (let i = 0; i < rawData.length; i++) {
       if (rawData[i] && 
-          typeof rawData[i][0] === 'string' && 
-          rawData[i][0].toString().toUpperCase().includes("DIA")) {
+          rawData[i][0] === "DIA") {
         headerRowIndex = i;
         break;
       }
@@ -38,9 +54,9 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
       };
     }
     
-    // Começar a ler as entradas de dias a partir da linha após o cabeçalho
+    // Começar a ler as entradas de dias a partir da linha após o cabeçalho (pulando a linha de subtítulos)
     const entries: ExcelDayEntry[] = [];
-    let currentRow = headerRowIndex + 1;
+    let currentRow = headerRowIndex + 2; // Pular a linha de subtítulos (ENTRADA, SAÍDA, etc)
     
     // Ler até encontrar "TOTAL:" ou até o final da planilha
     while (currentRow < rawData.length) {
@@ -48,18 +64,18 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
       if (!row || !row[0] || row[0] === "TOTAL:") break;
       
       // Verificar se a primeira coluna é um número (dia do mês)
-      if (!isNaN(Number(row[0]))) {
+      if (typeof row[0] === "number") {
         const entry: ExcelDayEntry = {
           day: Number(row[0]),
           weekday: row[1] || "",
-          morningEntry: row[3] || "",
-          morningExit: row[4] || "",
-          afternoonEntry: row[5] || "",
-          afternoonExit: row[6] || "",
-          extraEntry: row[7] || "",
-          extraExit: row[8] || "",
-          hoursWorked: row[9] || "0:00",
-          extraHours: row[10] || "0:00",
+          morningEntry: formatTimeValue(row[3]),
+          morningExit: formatTimeValue(row[4]),
+          afternoonEntry: formatTimeValue(row[5]),
+          afternoonExit: formatTimeValue(row[6]),
+          extraEntry: formatTimeValue(row[7]),
+          extraExit: formatTimeValue(row[8]),
+          hoursWorked: formatTimeValue(row[9]),
+          extraHours: formatTimeValue(row[10]),
           observation: row[11] || ""
         };
         
@@ -76,32 +92,35 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
     let nextBalanceRow = -1;
     
     for (let i = 0; i < rawData.length; i++) {
-      if (rawData[i] && rawData[i][0] === "TOTAL:") {
+      const row = rawData[i];
+      if (!row) continue;
+      
+      if (row[0] === "TOTAL:") {
         totalRow = i;
       }
-      if (rawData[i] && rawData[i][0] === "SALDO DO MÊS ANTERIOR") {
+      if (row[5] === "SALDO DO MÊS ANTERIOR") {
         previousBalanceRow = i;
       }
-      if (rawData[i] && rawData[i][0] === "SALDO DO MÊS ATUAL") {
+      if (row[5] === "SALDO DO MÊS ATUAL") {
         currentBalanceRow = i;
       }
-      if (rawData[i] && rawData[i][0] === "SALDO PARA O PRÓXIMO MÊS") {
+      if (row[5] === "SALDO PARA O PRÓXIMO MÊS") {
         nextBalanceRow = i;
       }
     }
     
-    const totalWorkedHours = totalRow !== -1 ? (rawData[totalRow][9] || "0:00") : "0:00";
-    const previousMonthBalance = previousBalanceRow !== -1 ? (rawData[previousBalanceRow][1] || "0:00") : "0:00";
-    const currentMonthBalance = currentBalanceRow !== -1 ? (rawData[currentBalanceRow][1] || "0:00") : "0:00";
-    const nextMonthBalance = nextBalanceRow !== -1 ? (rawData[nextBalanceRow][1] || "0:00") : "0:00";
+    const totalWorkedHours = totalRow !== -1 && rawData[totalRow] ? formatTimeValue(rawData[totalRow][9]) : "0:00";
+    const previousMonthBalance = previousBalanceRow !== -1 && rawData[previousBalanceRow] ? formatTimeValue(rawData[previousBalanceRow][10]) : "0:00";
+    const currentMonthBalance = currentBalanceRow !== -1 && rawData[currentBalanceRow] ? formatTimeValue(rawData[currentBalanceRow][10]) : "0:00";
+    const nextMonthBalance = nextBalanceRow !== -1 && rawData[nextBalanceRow] ? formatTimeValue(rawData[nextBalanceRow][10]) : "0:00";
     
     // Criar o objeto ExcelTimeSheetData
     const excelData: ExcelTimeSheetData = {
       employee: {
-        name: employeeName,
-        position: employeePosition,
-        month: month,
-        year: year
+        name: employeeName.trim(),
+        position: employeePosition.trim(),
+        month: month.trim(),
+        year: String(year)
       },
       entries: entries,
       totals: {
@@ -129,12 +148,21 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
   }
 }
 
-// Função auxiliar para extrair um valor de célula
-function extractCellValue(data: any[][], rowIndex: number, colIndex: number): string {
-  if (!data || !data[rowIndex] || data[rowIndex][colIndex] === undefined) {
-    return "";
+// Função para formatar valores decimais de tempo para string HH:MM
+function formatTimeValue(value: any): string {
+  if (value === null || value === undefined) {
+    return "0:00";
   }
-  return String(data[rowIndex][colIndex]);
+  
+  // Se for um número decimal (ex: 0.3333333)
+  if (typeof value === "number") {
+    const hours = Math.floor(value * 24);
+    const minutes = Math.round((value * 24 - hours) * 60);
+    return `${hours}:${minutes.toString().padStart(2, '0')}`;
+  }
+  
+  // Se já for uma string, retorna como está
+  return String(value);
 }
 
 // Converter do formato Excel para o formato do Dashboard
@@ -143,7 +171,7 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
   const employeeId = fileName.replace(/\.[^/.]+$/, "").split(" - ").pop() || 
                      `EMP${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
 
-  // Extrair departamento (poderia ser baseado na posição ou em outra lógica)
+  // Extrair departamento (da posição)
   const department = excelData.employee.position || "Sem departamento";
   
   // Converter as entradas
@@ -152,8 +180,11 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
     const hoursWorked = convertTimeStringToDecimal(entry.hoursWorked);
     const extraHours = convertTimeStringToDecimal(entry.extraHours);
     
-    // Calcular horas previstas (normalmente 8 horas por dia útil)
-    const expectedHours = entry.observation?.toUpperCase().includes("FERIADO") ? 0 : 8;
+    // Calcular horas previstas (jornada)
+    // No seu formato de Excel, parece que a jornada está na coluna 2 (índice 2)
+    const expectedHours = parseFloat(entry.weekday) || 
+                         (entry.observation?.toUpperCase().includes("FERIADO") || 
+                          entry.observation?.toUpperCase().includes("FÉRIAS") ? 0 : 8);
     
     // Calcular atrasos e horas justificadas
     // Atraso seria a diferença entre o esperado e o trabalhado, se negativa
@@ -167,13 +198,13 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
     const actualLateHours = justifiedHours > 0 ? 0 : lateHours;
     
     // Calcular o saldo do dia
-    const balance = hoursWorked - expectedHours;
+    const balance = extraHours || (hoursWorked - expectedHours);
     
     // Construir a data (YYYY-MM-DD)
     const monthIndex = getMonthIndex(excelData.employee.month);
     const date = `${excelData.employee.year}-${(monthIndex + 1).toString().padStart(2, '0')}-${entry.day.toString().padStart(2, '0')}`;
     
-    return {
+    const timeEntry: TimeEntry = {
       date,
       hoursWorked,
       expectedHours,
@@ -193,6 +224,8 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
         }
       ] : []
     };
+    
+    return timeEntry;
   });
   
   return {
