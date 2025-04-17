@@ -65,6 +65,13 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
       
       // Verificar se a primeira coluna é um número (dia do mês)
       if (typeof row[0] === "number") {
+        // Determinar se há uma observação que indica um dia não trabalhado
+        const observation = row[11] || "";
+        const isHoliday = observation.toUpperCase().includes("FERIADO");
+        const isVacation = observation.toUpperCase().includes("FÉRIAS");
+        const isSick = observation.toUpperCase().includes("FALTA") || observation.toUpperCase().includes("DOENTE") || observation.toUpperCase().includes("VIROSE");
+        const isNonWorkingDay = row[2] === 0 || isHoliday || isVacation || isSick;
+        
         const entry: ExcelDayEntry = {
           day: Number(row[0]),
           weekday: row[1] || "",
@@ -76,7 +83,7 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
           extraExit: formatTimeValue(row[8]),
           hoursWorked: formatTimeValue(row[9]),
           extraHours: formatTimeValue(row[10]),
-          observation: row[11] || ""
+          observation: observation
         };
         
         entries.push(entry);
@@ -95,7 +102,7 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
       const row = rawData[i];
       if (!row) continue;
       
-      if (row[0] === "TOTAL:") {
+      if (row[0] === "TOTAL:" || (row[9] === "TOTAL:" && row[10] !== undefined)) {
         totalRow = i;
       }
       if (row[5] === "SALDO DO MÊS ANTERIOR") {
@@ -109,7 +116,7 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
       }
     }
     
-    const totalWorkedHours = totalRow !== -1 && rawData[totalRow] ? formatTimeValue(rawData[totalRow][9]) : "0:00";
+    const totalWorkedHours = totalRow !== -1 && rawData[totalRow] ? formatTimeValue(rawData[totalRow][9] || rawData[totalRow][10]) : "0:00";
     const previousMonthBalance = previousBalanceRow !== -1 && rawData[previousBalanceRow] ? formatTimeValue(rawData[previousBalanceRow][10]) : "0:00";
     const currentMonthBalance = currentBalanceRow !== -1 && rawData[currentBalanceRow] ? formatTimeValue(rawData[currentBalanceRow][10]) : "0:00";
     const nextMonthBalance = nextBalanceRow !== -1 && rawData[nextBalanceRow] ? formatTimeValue(rawData[nextBalanceRow][10]) : "0:00";
@@ -156,8 +163,16 @@ function formatTimeValue(value: any): string {
   
   // Se for um número decimal (ex: 0.3333333)
   if (typeof value === "number") {
-    const hours = Math.floor(value * 24);
-    const minutes = Math.round((value * 24 - hours) * 60);
+    // No Excel, 1 = 24 horas, então multiplicamos por 24 para obter horas
+    const totalHours = value * 24;
+    const hours = Math.floor(totalHours);
+    const minutes = Math.round((totalHours - hours) * 60);
+    
+    // Lidar com casos onde os minutos arredondam para 60
+    if (minutes === 60) {
+      return `${hours + 1}:00`;
+    }
+    
     return `${hours}:${minutes.toString().padStart(2, '0')}`;
   }
   
@@ -176,20 +191,30 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
   
   // Converter as entradas
   const timeEntries = excelData.entries.map(entry => {
-    // Converter strings de hora (HH:MM) para números decimais
+    // Converter strings de hora (HH:MM) para números decimais (horas)
     const hoursWorked = convertTimeStringToDecimal(entry.hoursWorked);
     const extraHours = convertTimeStringToDecimal(entry.extraHours);
     
+    // Verificar se é um dia de trabalho ou não
+    const isWorkDay = !(entry.weekday === "S" || entry.weekday === "D" || 
+                      entry.observation?.toUpperCase().includes("FERIADO") ||
+                      entry.observation?.toUpperCase().includes("FÉRIAS"));
+    
     // Calcular horas previstas (jornada)
-    // No seu formato de Excel, parece que a jornada está na coluna 2 (índice 2)
-    const expectedHours = parseFloat(entry.weekday) || 
-                         (entry.observation?.toUpperCase().includes("FERIADO") || 
-                          entry.observation?.toUpperCase().includes("FÉRIAS") ? 0 : 8);
+    // No formato Excel, a jornada está na coluna 2 (índice 2)
+    // Se for 0, é um dia não trabalhado ou feriado
+    const rawExpectedHours = typeof entry.weekday === "number" ? entry.weekday : 0;
+    let expectedHours = rawExpectedHours * 24; // Converter de fração de dia para horas
+    
+    if (expectedHours === 0 && isWorkDay) {
+      // Se for um dia de trabalho regular sem jornada especificada, assumir 8 horas
+      expectedHours = 9; // Jornada padrão no Brasil (8h + 1h almoço)
+    }
     
     // Calcular atrasos e horas justificadas
     // Atraso seria a diferença entre o esperado e o trabalhado, se negativa
     let lateHours = 0;
-    if (hoursWorked < expectedHours) {
+    if (isWorkDay && hoursWorked < expectedHours) {
       lateHours = expectedHours - hoursWorked;
     }
     
@@ -198,7 +223,8 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
     const actualLateHours = justifiedHours > 0 ? 0 : lateHours;
     
     // Calcular o saldo do dia
-    const balance = extraHours || (hoursWorked - expectedHours);
+    // Se houver um valor explícito de horas extras, usar esse valor
+    const balance = extraHours;
     
     // Construir a data (YYYY-MM-DD)
     const monthIndex = getMonthIndex(excelData.employee.month);
@@ -213,7 +239,7 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
       justifiedHours,
       balance,
       justification: entry.observation ? {
-        code: "J001",
+        code: isWorkDay ? "J001" : "J002",
         description: entry.observation
       } : undefined,
       extraTypes: extraHours > 0 ? [
