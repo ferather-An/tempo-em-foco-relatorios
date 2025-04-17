@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -8,11 +8,15 @@ import { TimeMetricsChart } from "@/components/dashboard/TimeMetricsChart";
 import { TeamSummaryCard } from "@/components/dashboard/TeamSummaryCard";
 import { MonthSelector } from "@/components/dashboard/MonthSelector";
 import { EmployeeSelector } from "@/components/dashboard/EmployeeSelector";
+import { ExcelImporter } from "@/components/dashboard/ExcelImporter";
 import { mockTeamData, getEmployeeMetrics } from "@/lib/mockData";
+import { EmployeeTimeData, TeamData } from "@/lib/types";
 import { Clock, CheckCheck, Hourglass, Timer, Users } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 
 const Index = () => {
-  // State for filters
+  // State for filters and data
+  const [teamData, setTeamData] = useState<TeamData>(mockTeamData);
   const [selectedMonth, setSelectedMonth] = useState<number>(() => {
     const currentDate = new Date();
     return currentDate.getMonth();
@@ -22,9 +26,36 @@ const Index = () => {
     return currentDate.getFullYear();
   });
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [importedEmployees, setImportedEmployees] = useState<EmployeeTimeData[]>([]);
+  
+  // Use local storage to persist imported employees
+  useEffect(() => {
+    const savedEmployees = localStorage.getItem('importedEmployees');
+    if (savedEmployees) {
+      try {
+        const parsedData = JSON.parse(savedEmployees);
+        setImportedEmployees(parsedData);
+      } catch (e) {
+        console.error("Erro ao carregar dados salvos:", e);
+      }
+    }
+  }, []);
+  
+  useEffect(() => {
+    // Save imported employees to local storage
+    if (importedEmployees.length > 0) {
+      localStorage.setItem('importedEmployees', JSON.stringify(importedEmployees));
+    }
+  }, [importedEmployees]);
+  
+  // Combine mock data with imported data
+  const combinedTeamData: TeamData = {
+    departments: teamData.departments,
+    employees: [...teamData.employees, ...importedEmployees]
+  };
 
   // Filter data based on current selection
-  const filteredEmployees = mockTeamData.employees.map((employee) => ({
+  const filteredEmployees = combinedTeamData.employees.map((employee) => ({
     ...employee,
     timeEntries: employee.timeEntries.filter((entry) => {
       const entryDate = new Date(entry.date);
@@ -65,6 +96,48 @@ const Index = () => {
 
   // Format numbers to display
   const formatNumber = (num: number) => num.toFixed(1);
+  
+  // Handle Excel import
+  const handleImportExcel = (employeeData: EmployeeTimeData) => {
+    // Check if employee already exists
+    const existingIndex = importedEmployees.findIndex(e => 
+      e.name === employeeData.name && e.department === employeeData.department
+    );
+    
+    if (existingIndex >= 0) {
+      // Update existing employee data
+      const updatedEmployees = [...importedEmployees];
+      updatedEmployees[existingIndex] = employeeData;
+      setImportedEmployees(updatedEmployees);
+      toast({ 
+        title: "Dados atualizados", 
+        description: `Os dados de ${employeeData.name} foram atualizados.` 
+      });
+    } else {
+      // Add new employee
+      setImportedEmployees([...importedEmployees, employeeData]);
+      toast({ 
+        title: "Funcionário adicionado", 
+        description: `${employeeData.name} foi adicionado ao dashboard.` 
+      });
+    }
+    
+    // Auto-select the imported employee
+    setSelectedEmployeeId(employeeData.id);
+  };
+  
+  // Clear imported data
+  const handleClearData = () => {
+    if (window.confirm("Tem certeza que deseja limpar todos os dados importados?")) {
+      setImportedEmployees([]);
+      localStorage.removeItem('importedEmployees');
+      setSelectedEmployeeId(null);
+      toast({ 
+        title: "Dados limpos", 
+        description: "Todos os dados importados foram removidos." 
+      });
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
@@ -74,7 +147,7 @@ const Index = () => {
             <h1 className="text-2xl font-bold text-blue-700">
               Tempo em Foco: Relatórios de Horas
             </h1>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
               <MonthSelector
                 month={selectedMonth}
                 year={selectedYear}
@@ -84,11 +157,22 @@ const Index = () => {
                 }}
               />
               <EmployeeSelector
-                employees={mockTeamData.employees}
+                employees={combinedTeamData.employees}
                 selectedId={selectedEmployeeId}
                 onSelect={setSelectedEmployeeId}
                 includeAll={true}
               />
+              <div className="flex gap-2">
+                <ExcelImporter onImport={handleImportExcel} />
+                {importedEmployees.length > 0 && (
+                  <button 
+                    onClick={handleClearData}
+                    className="text-xs text-red-500 hover:text-red-700"
+                  >
+                    Limpar dados
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -290,7 +374,7 @@ const Index = () => {
               </CardContent>
             </Card>
 
-            <TeamSummaryCard departments={mockTeamData.departments} />
+            <TeamSummaryCard departments={teamData.departments} />
           </TabsContent>
         </Tabs>
       </main>

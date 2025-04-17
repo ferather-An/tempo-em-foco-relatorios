@@ -42,3 +42,40 @@ export interface TeamData {
   departments: DepartmentSummary[];
   employees: EmployeeTimeData[];
 }
+
+// Tipos para importação de Excel
+export interface ExcelTimeSheetData {
+  employee: {
+    name: string;
+    position: string;
+    month: string;
+    year: string;
+  };
+  entries: ExcelDayEntry[];
+  totals: {
+    totalWorkedHours: string;
+    previousMonthBalance: string;
+    currentMonthBalance: string;
+    nextMonthBalance: string;
+  };
+}
+
+export interface ExcelDayEntry {
+  day: number;
+  weekday: string;
+  morningEntry?: string;
+  morningExit?: string;
+  afternoonEntry?: string;
+  afternoonExit?: string;
+  extraEntry?: string;
+  extraExit?: string;
+  hoursWorked: string;
+  extraHours: string;
+  observation?: string;
+}
+
+export interface ImportResult {
+  success: boolean;
+  message: string;
+  data?: EmployeeTimeData;
+}

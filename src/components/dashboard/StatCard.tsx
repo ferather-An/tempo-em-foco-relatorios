@@ -13,6 +13,7 @@ interface StatCardProps {
   };
   className?: string;
   valueClassName?: string;
+  footer?: React.ReactNode;
 }
 
 export function StatCard({
@@ -23,6 +24,7 @@ export function StatCard({
   trend,
   className,
   valueClassName,
+  footer,
 }: StatCardProps) {
   return (
     <Card className={cn("overflow-hidden", className)}>
@@ -46,6 +48,9 @@ export function StatCard({
         </div>
         {description && (
           <p className="text-xs text-muted-foreground">{description}</p>
+        )}
+        {footer && (
+          <div className="mt-2 pt-2 border-t text-sm">{footer}</div>
         )}
       </CardContent>
     </Card>
