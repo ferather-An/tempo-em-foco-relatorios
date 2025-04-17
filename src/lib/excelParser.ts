@@ -72,9 +72,26 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
         const isSick = observation.toUpperCase().includes("FALTA") || observation.toUpperCase().includes("DOENTE") || observation.toUpperCase().includes("VIROSE");
         const isNonWorkingDay = row[2] === 0 || isHoliday || isVacation || isSick;
         
+        // Para debug
+        console.log(`Dia ${row[0]}: Raw data`, {
+          day: row[0],
+          weekday: row[1],
+          jornada: row[2],
+          manhãEntrada: row[3],
+          manhãSaída: row[4],
+          tardeEntrada: row[5],
+          tardeSaída: row[6],
+          extraEntrada: row[7],
+          extraSaída: row[8],
+          horaTrabalhada: row[9],
+          horaExtra: row[10],
+          observação: row[11]
+        });
+        
         const entry: ExcelDayEntry = {
           day: Number(row[0]),
           weekday: row[1] || "",
+          expectedHours: row[2], // Guardar o valor bruto da jornada
           morningEntry: formatTimeValue(row[3]),
           morningExit: formatTimeValue(row[4]),
           afternoonEntry: formatTimeValue(row[5]),
@@ -121,6 +138,13 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
     const currentMonthBalance = currentBalanceRow !== -1 && rawData[currentBalanceRow] ? formatTimeValue(rawData[currentBalanceRow][10]) : "0:00";
     const nextMonthBalance = nextBalanceRow !== -1 && rawData[nextBalanceRow] ? formatTimeValue(rawData[nextBalanceRow][10]) : "0:00";
     
+    console.log("Saldos encontrados:", {
+      totalWorkedHours,
+      previousMonthBalance,
+      currentMonthBalance,
+      nextMonthBalance
+    });
+    
     // Criar o objeto ExcelTimeSheetData
     const excelData: ExcelTimeSheetData = {
       employee: {
@@ -135,7 +159,8 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
         previousMonthBalance,
         currentMonthBalance,
         nextMonthBalance
-      }
+      },
+      rawData: rawData // Incluir dados brutos para facilitar debug
     };
     
     // Converter para o formato EmployeeTimeData para o dashboard
@@ -191,39 +216,42 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
   
   // Converter as entradas
   const timeEntries = excelData.entries.map(entry => {
-    // Converter strings de hora (HH:MM) para números decimais (horas)
-    const hoursWorked = convertTimeStringToDecimal(entry.hoursWorked);
-    const extraHours = convertTimeStringToDecimal(entry.extraHours);
+    // Usar diretamente os valores brutos da planilha
+    const expectedHoursRaw = entry.expectedHours || 0;
+    const expectedHours = expectedHoursRaw * 24; // Converter de fração de dia para horas
     
     // Verificar se é um dia de trabalho ou não
     const isWorkDay = !(entry.weekday === "S" || entry.weekday === "D" || 
                       entry.observation?.toUpperCase().includes("FERIADO") ||
                       entry.observation?.toUpperCase().includes("FÉRIAS"));
     
-    // Calcular horas previstas (jornada)
-    // No formato Excel, a jornada está na coluna 2 (índice 2)
-    // Se for 0, é um dia não trabalhado ou feriado
-    const rawExpectedHours = typeof entry.weekday === "number" ? entry.weekday : 0;
-    let expectedHours = rawExpectedHours * 24; // Converter de fração de dia para horas
+    // Extrair horas trabalhadas e horas extras diretamente dos valores brutos
+    // Converter strings de hora (HH:MM) para números decimais (horas)
+    const hoursWorkedRaw = convertRawExcelNumberToDecimal(entry.hoursWorked);
+    const extraHoursRaw = convertRawExcelNumberToDecimal(entry.extraHours);
     
-    if (expectedHours === 0 && isWorkDay) {
-      // Se for um dia de trabalho regular sem jornada especificada, assumir 8 horas
-      expectedHours = 9; // Jornada padrão no Brasil (8h + 1h almoço)
-    }
+    console.log(`Dia ${entry.day}: Processamento`, {
+      hoursWorkedRaw,
+      extraHoursRaw,
+      expectedHoursRaw,
+      expectedHours,
+      isWorkDay
+    });
     
     // Calcular atrasos e horas justificadas
-    // Atraso seria a diferença entre o esperado e o trabalhado, se negativa
     let lateHours = 0;
-    if (isWorkDay && hoursWorked < expectedHours) {
-      lateHours = expectedHours - hoursWorked;
+    if (isWorkDay && expectedHours > 0 && hoursWorkedRaw < expectedHours) {
+      lateHours = expectedHours - hoursWorkedRaw;
     }
     
     // Horas justificadas (se houver observação, consideramos como justificada)
-    const justifiedHours = entry.observation ? lateHours : 0;
+    const justifiedHours = (entry.observation && lateHours > 0) ? lateHours : 0;
     const actualLateHours = justifiedHours > 0 ? 0 : lateHours;
     
+    // Usar o valor de horas extras diretamente da planilha
+    const extraHours = extraHoursRaw; 
+    
     // Calcular o saldo do dia
-    // Se houver um valor explícito de horas extras, usar esse valor
     const balance = extraHours;
     
     // Construir a data (YYYY-MM-DD)
@@ -232,12 +260,17 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
     
     const timeEntry: TimeEntry = {
       date,
-      hoursWorked,
-      expectedHours,
+      hoursWorked: hoursWorkedRaw,
+      expectedHours: expectedHours,
       lateHours: actualLateHours,
-      extraHours,
-      justifiedHours,
-      balance,
+      extraHours: extraHours,
+      justifiedHours: justifiedHours,
+      balance: balance,
+      rawValues: {
+        hoursWorked: entry.hoursWorked,
+        extraHours: entry.extraHours,
+        expectedHours: expectedHoursRaw
+      },
       justification: entry.observation ? {
         code: isWorkDay ? "J001" : "J002",
         description: entry.observation
@@ -258,8 +291,29 @@ function convertExcelToEmployeeTimeData(excelData: ExcelTimeSheetData, fileName:
     id: employeeId,
     name: excelData.employee.name,
     department,
-    timeEntries
+    timeEntries,
+    rawData: excelData.rawData
   };
+}
+
+// Função para converter valores brutos de Excel para números decimais
+function convertRawExcelNumberToDecimal(value: string | number): number {
+  // Se for string "HH:MM", converter para decimal
+  if (typeof value === "string") {
+    const [hours, minutes] = value.split(":").map(Number);
+    if (!isNaN(hours) && !isNaN(minutes)) {
+      return hours + (minutes / 60);
+    }
+    return 0;
+  }
+  
+  // Se for número decimal direto do Excel (fração de dia)
+  if (typeof value === "number") {
+    // Excel: 1 = 24 horas
+    return value * 24;
+  }
+  
+  return 0;
 }
 
 // Função para converter string de hora (HH:MM) para decimal

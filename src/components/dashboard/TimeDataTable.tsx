@@ -13,9 +13,10 @@ import { TimeEntry } from "@/lib/types";
 interface TimeDataTableProps {
   entries: TimeEntry[];
   caption?: string;
+  showRawValues?: boolean;
 }
 
-export function TimeDataTable({ entries, caption }: TimeDataTableProps) {
+export function TimeDataTable({ entries, caption, showRawValues = false }: TimeDataTableProps) {
   // Format date to Brazilian format
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -41,6 +42,7 @@ export function TimeDataTable({ entries, caption }: TimeDataTableProps) {
             <TableHead>Horas Abonadas</TableHead>
             <TableHead>Saldo</TableHead>
             <TableHead>Justificativa</TableHead>
+            {showRawValues && <TableHead>Valores Brutos</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -90,6 +92,17 @@ export function TimeDataTable({ entries, caption }: TimeDataTableProps) {
                   ? `${entry.justification.code} - ${entry.justification.description}`
                   : "-"}
               </TableCell>
+              {showRawValues && (
+                <TableCell className="text-xs">
+                  {entry.rawValues ? (
+                    <div className="flex flex-col gap-1">
+                      <span>Jornada: {entry.rawValues.expectedHours}</span>
+                      <span>Trabalhado: {entry.rawValues.hoursWorked}</span>
+                      <span>Extra: {entry.rawValues.extraHours}</span>
+                    </div>
+                  ) : "-"}
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

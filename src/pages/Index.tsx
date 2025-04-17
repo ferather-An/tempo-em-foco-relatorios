@@ -13,6 +13,8 @@ import { mockTeamData, getEmployeeMetrics } from "@/lib/mockData";
 import { EmployeeTimeData, TeamData } from "@/lib/types";
 import { Clock, CheckCheck, Hourglass, Timer, Users } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const Index = () => {
   // State for filters and data
@@ -27,6 +29,7 @@ const Index = () => {
   });
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   const [importedEmployees, setImportedEmployees] = useState<EmployeeTimeData[]>([]);
+  const [showRawValues, setShowRawValues] = useState(false);
   
   // Use local storage to persist imported employees
   useEffect(() => {
@@ -77,17 +80,17 @@ const Index = () => {
       filteredEmployees.reduce(
         (sum, emp) => sum + getEmployeeMetrics(emp).avgDaily,
         0
-      ) / filteredEmployees.length,
+      ) / (filteredEmployees.length || 1), // Evitar divisão por zero
     avgExtraHours:
       filteredEmployees.reduce(
         (sum, emp) => sum + getEmployeeMetrics(emp).avgExtra,
         0
-      ) / filteredEmployees.length,
+      ) / (filteredEmployees.length || 1),
     avgLateHours:
       filteredEmployees.reduce(
         (sum, emp) => sum + getEmployeeMetrics(emp).avgLate,
         0
-      ) / filteredEmployees.length,
+      ) / (filteredEmployees.length || 1),
     totalBalance: filteredEmployees.reduce(
       (sum, emp) => sum + getEmployeeMetrics(emp).balance,
       0
@@ -180,12 +183,21 @@ const Index = () => {
 
       <main className="container mx-auto flex-1 p-4">
         <Tabs defaultValue="overview">
-          <div className="mb-6 flex justify-between">
+          <div className="mb-6 flex flex-wrap justify-between items-center gap-2">
             <TabsList>
               <TabsTrigger value="overview">Visão Geral</TabsTrigger>
               <TabsTrigger value="individual">Funcionário</TabsTrigger>
               <TabsTrigger value="team">Equipe</TabsTrigger>
             </TabsList>
+            
+            <div className="flex items-center space-x-2">
+              <Switch 
+                id="raw-values" 
+                checked={showRawValues} 
+                onCheckedChange={setShowRawValues}
+              />
+              <Label htmlFor="raw-values">Exibir valores brutos</Label>
+            </div>
           </div>
 
           {/* Visão Geral Tab */}
@@ -256,6 +268,7 @@ const Index = () => {
                           .flatMap((emp) => emp.timeEntries)
                           .sort((a, b) => a.date.localeCompare(b.date))
                   }
+                  showRawValues={showRawValues}
                 />
               </CardContent>
             </Card>
@@ -331,6 +344,7 @@ const Index = () => {
                 <TimeDataTable
                   entries={currentEmployee.timeEntries}
                   caption={`Detalhamento diário - ${currentEmployee.name}`}
+                  showRawValues={showRawValues}
                 />
               </>
             )}

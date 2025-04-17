@@ -14,6 +14,11 @@ export interface TimeEntry {
   extraHours: number;
   justifiedHours: number;
   balance: number;
+  rawValues?: {
+    hoursWorked: string | number;
+    extraHours: string | number;
+    expectedHours: number;
+  };
   justification?: {
     code: string;
     description: string;
@@ -27,6 +32,7 @@ export interface TimeEntry {
 
 export interface EmployeeTimeData extends EmployeeData {
   timeEntries: TimeEntry[];
+  rawData?: any; // Armazenar dados brutos para debug se necessário
 }
 
 export interface DepartmentSummary {
@@ -58,19 +64,21 @@ export interface ExcelTimeSheetData {
     currentMonthBalance: string;
     nextMonthBalance: string;
   };
+  rawData?: any; // Armazenar dados brutos para debug
 }
 
 export interface ExcelDayEntry {
   day: number;
   weekday: string;
+  expectedHours?: number; // Valor bruto da jornada
   morningEntry?: string;
   morningExit?: string;
   afternoonEntry?: string;
   afternoonExit?: string;
   extraEntry?: string;
   extraExit?: string;
-  hoursWorked: string;
-  extraHours: string;
+  hoursWorked: string | number;
+  extraHours: string | number;
   observation?: string;
 }
 
