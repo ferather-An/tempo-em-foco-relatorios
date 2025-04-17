@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,9 +44,13 @@ export function ExcelImporter({ onImport, disabled = false }: ExcelImporterProps
       // Lê o arquivo Excel
       const data = await readExcelFile(file);
       
+      console.log("Dados brutos do Excel:", data);
+
       // Processa os dados do Excel para o formato do dashboard
       const result = parseExcelTimesheet(data, file.name);
       
+      console.log("Resultado do processamento:", result);
+
       if (result.success && result.data) {
         onImport(result.data);
         toast({

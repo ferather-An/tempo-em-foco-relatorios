@@ -1,9 +1,9 @@
-
 import { ExcelTimeSheetData, EmployeeTimeData, ImportResult, ExcelDayEntry, TimeEntry } from "./types";
 
 // Função para converter os dados brutos do Excel para o formato ExcelTimeSheetData
-export function parseExcelTimesheet(rawData: any, fileName: string): ImportResult {
+export function parseExcelTimesheet(rawData: unknown[][], fileName: string): ImportResult {
   try {
+    console.log("Iniciando processamento da planilha:", rawData);
     console.log("Dados brutos recebidos:", rawData);
     
     // Nome está na célula D3 (índice 2,3)
@@ -36,6 +36,8 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
         message: "Formato de planilha inválido. Não foi possível encontrar informações do funcionário."
       };
     }
+    
+    console.log("Informações extraídas:", { employeeName, employeePosition, month, year });
     
     // Encontrar a linha de cabeçalho com "DIA", "JORNADA", etc
     let headerRowIndex = -1;
@@ -109,6 +111,8 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
       currentRow++;
     }
     
+    console.log("Entradas de dias processadas:", entries);
+    
     // Encontrar os totais na planilha
     let totalRow = -1;
     let previousBalanceRow = -1;
@@ -138,6 +142,7 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
     const currentMonthBalance = currentBalanceRow !== -1 && rawData[currentBalanceRow] ? formatTimeValue(rawData[currentBalanceRow][10]) : "0:00";
     const nextMonthBalance = nextBalanceRow !== -1 && rawData[nextBalanceRow] ? formatTimeValue(rawData[nextBalanceRow][10]) : "0:00";
     
+    console.log("Totais calculados:", { totalWorkedHours, previousMonthBalance, currentMonthBalance, nextMonthBalance });
     console.log("Saldos encontrados:", {
       totalWorkedHours,
       previousMonthBalance,
@@ -181,7 +186,7 @@ export function parseExcelTimesheet(rawData: any, fileName: string): ImportResul
 }
 
 // Função para formatar valores decimais de tempo para string HH:MM
-function formatTimeValue(value: any): string {
+function formatTimeValue(value: number | string | null | undefined): string {
   if (value === null || value === undefined) {
     return "0:00";
   }
@@ -302,7 +307,8 @@ function convertRawExcelNumberToDecimal(value: string | number): number {
   if (typeof value === "string") {
     const [hours, minutes] = value.split(":").map(Number);
     if (!isNaN(hours) && !isNaN(minutes)) {
-      return hours + (minutes / 60);
+      const decimal = hours + (minutes / 60);
+      return decimal;
     }
     return 0;
   }
@@ -325,7 +331,7 @@ function convertTimeStringToDecimal(timeStr: string): number {
   const cleanTimeStr = isNegative ? timeStr.substring(1) : timeStr;
   
   const [hours, minutes] = cleanTimeStr.split(":").map(Number);
-  let decimal = hours + (minutes / 60);
+  const decimal = hours + (minutes / 60);
   
   return isNegative ? -decimal : decimal;
 }
